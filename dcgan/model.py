@@ -1,8 +1,11 @@
+import os
+import numpy as np
 from keras.models import Model
 from keras.layers import Input, Dense, Reshape, Activation, BatchNormalization, Flatten
 from keras.layers import UpSampling2D, Conv2D, MaxPool2D
 from keras.layers.advanced_activations import LeakyReLU
 from keras.optimizers import Adam
+from keras import backend as K
 
 LRELU = 0.2
 
@@ -31,8 +34,8 @@ def custom_dense(x, units, bn=True, activation='lrelu'):
     
     return out
 
-def generator_model(input_shape=(100,)):
-    x = Input(input_shape)
+def generator_model(latent_dims):
+    x = Input((latent_dims,))
     y = custom_dense(x, 1024)
     y = custom_dense(y, 128*7*7)
     y = Reshape((7,7,128))(y)
@@ -60,3 +63,83 @@ def generator_containing_discriminator(generator, discriminator):
     model.add(discriminator)
     
     return model
+
+class GanModel(object):
+    def __init__(self, g_weights='generator.h5', d_weights='discriminator.h5', data='data.npy'
+                 lr=5e-4, latent_dims=100):
+        self.lr = lr
+        self.latent_dims = latent_dims
+        self.d_loss = []
+        self.g_loss = []
+        self.load_data()
+        self.d_weights = d_weights
+        self.g_weights = g_weights
+        self.data = data
+        self.d = discriminator_model()
+        self.g = generator_model(latent_dims)
+        self.dg = generator_containing_discriminator(self.g, self.d)
+        self.g.compile(loss='binary_crossentropy', optimizer=Adam(self.lr))
+        self.dg.compile(loss='binary_crossentropy', optimizer=Adam(self.lr))
+        self.d.trainable = True
+        self.d.compile(loss='binary_crossentropy', optimizer=Adam(self.lr))
+        self.load_weights()
+        self.save_data()
+    
+    def load_data(self):
+        if os.path.exists(self.data):
+            data = np.load(self.data).item()
+            self.lr = data['lr']
+            self.latent_dims = data['latent_dims']
+            self.d_loss = data['d_loss']
+            self.g_los = data['g_loss']
+
+    def save_data(self):
+        data = {'lr': self.lr, 'latent_dims': self.latent_dims, 'd_loss': self.d_loss, 'g_loss': self.g_loss}
+        np.save(self.data, data)
+
+    def load_weights(self):
+        if os.path.exists(self.g_weights) and os.path.exists(self.d_weights):
+            self.d.load_weights(self.d_weights)
+            self.g.load_weights(self.g_weights)
+        
+    def train(self, train_data, test_data=None, batch_size=128, epochs=20):
+        X_train, y_train = train_data
+        if test_data:
+            X_test, y_test = test_data
+        
+        n_batches = X_train.shape[0] // BATCH_SIZE
+        noise = np.zeros((batch_size, self.latent_dims))
+        for epoch in range(epochs):
+            print(f'Epoch : {epoch}')
+            for index in range(n_batches):
+                for i in range(batch_size):
+                    noise[i, :] = np.random.uniform(-1, 1, self.latent_dims)
+                    
+                image_batch = X_train[index*batch_size:(index+1)*batch_size]
+                generated_images = self.g.predict(noise, verbose=0)
+                X = np.concatenate((image_batch, generated_images))
+                y = [0.9] * batch_size + [0.0] * batch_size
+                d_loss = self.d.train_on_batch(X, y)
+                self.d_loss.append(d_loss)
+                print('batch %d d_loss : %.5f' % (index, d_loss))
+                for i in range(batch_size):
+                    noise[i, :] = np.random.uniform(-1, 1, self.latent_dims)
+                    
+                self.d.trainable = False
+                g_loss = self.dg.train_on_batch(noise, [1] * batch_size)
+                discriminator.trainable = True
+                self.g_loss.append(g_loss)
+                print('batch %d g_loss : %.5f' % (index, g_loss))
+                if index % 10 == 9:
+                    self.g.save_weights(self.g_weights)
+                    self.d.save_weights(self.d_weights)
+                    self.save_data()
+
+    def generate(self, batch_size):
+        noise = np.zeros((batch_size, self.latent_dims))
+        for i in range(BATCH_SIZE):
+            noise[i, :] = np.random.uniform(-1, 1, self.latent_dims)
+            
+        generated_images = generator.predict(noise, verbose=1)
+        
+        return generated_images
