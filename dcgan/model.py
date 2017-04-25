@@ -1,6 +1,8 @@
+#import pdb
 import os
 import numpy as np
-from keras.models import Model
+from time import time
+from keras.models import Model, Sequential
 from keras.layers import Input, Dense, Reshape, Activation, BatchNormalization, Flatten
 from keras.layers import UpSampling2D, Conv2D, MaxPool2D
 from keras.layers.advanced_activations import LeakyReLU
@@ -65,16 +67,16 @@ def generator_containing_discriminator(generator, discriminator):
     return model
 
 class GanModel(object):
-    def __init__(self, g_weights='generator.h5', d_weights='discriminator.h5', data='data.npy'
+    def __init__(self, g_weights='generator.h5', d_weights='discriminator.h5', data='data.npy',
                  lr=5e-4, latent_dims=100):
         self.lr = lr
         self.latent_dims = latent_dims
         self.d_loss = []
         self.g_loss = []
+        self.data = data
         self.load_data()
         self.d_weights = d_weights
         self.g_weights = g_weights
-        self.data = data
         self.d = discriminator_model()
         self.g = generator_model(latent_dims)
         self.dg = generator_containing_discriminator(self.g, self.d)
@@ -91,7 +93,7 @@ class GanModel(object):
             self.lr = data['lr']
             self.latent_dims = data['latent_dims']
             self.d_loss = data['d_loss']
-            self.g_los = data['g_loss']
+            self.g_loss = data['g_loss']
 
     def save_data(self):
         data = {'lr': self.lr, 'latent_dims': self.latent_dims, 'd_loss': self.d_loss, 'g_loss': self.g_loss}
@@ -107,10 +109,12 @@ class GanModel(object):
         if test_data:
             X_test, y_test = test_data
         
-        n_batches = X_train.shape[0] // BATCH_SIZE
+        n_batches = X_train.shape[0] // batch_size
         noise = np.zeros((batch_size, self.latent_dims))
+        print(f'Batches per epoch : {n_batches}')
         for epoch in range(epochs):
-            print(f'Epoch : {epoch}')
+            t0 = time()
+            print(f'Epoch : {epoch + 1:04}/{epochs:04}')
             for index in range(n_batches):
                 for i in range(batch_size):
                     noise[i, :] = np.random.uniform(-1, 1, self.latent_dims)
@@ -121,25 +125,31 @@ class GanModel(object):
                 y = [0.9] * batch_size + [0.0] * batch_size
                 d_loss = self.d.train_on_batch(X, y)
                 self.d_loss.append(d_loss)
-                print('batch %d d_loss : %.5f' % (index, d_loss))
                 for i in range(batch_size):
                     noise[i, :] = np.random.uniform(-1, 1, self.latent_dims)
                     
                 self.d.trainable = False
                 g_loss = self.dg.train_on_batch(noise, [1] * batch_size)
-                discriminator.trainable = True
+                self.d.trainable = True
                 self.g_loss.append(g_loss)
-                print('batch %d g_loss : %.5f' % (index, g_loss))
+                if index == 0:
+                    print(f'{index+1:04}/{n_batches:04} gen loss: %.5f - disc loss: %.5f' %
+                          (g_loss, d_loss))
+                print(f'{index+1:04}/{n_batches:04} gen loss: %.5f - disc loss: %.5f' %
+                          (g_loss, d_loss), end='\r')
                 if index % 10 == 9:
                     self.g.save_weights(self.g_weights)
                     self.d.save_weights(self.d_weights)
                     self.save_data()
+                
+            print(f'{index+1:04}/{n_batches:04} gen loss: %.5f - disc loss: %.5f (%.2fs)' %
+                  (g_loss, d_loss, time() - t0))
 
-    def generate(self, batch_size):
+    def generate(self, batch_size, verbose=1):
         noise = np.zeros((batch_size, self.latent_dims))
-        for i in range(BATCH_SIZE):
+        for i in range(batch_size):
             noise[i, :] = np.random.uniform(-1, 1, self.latent_dims)
             
-        generated_images = generator.predict(noise, verbose=1)
+        generated_images = self.g.predict(noise, verbose=verbose)
         
         return generated_images
