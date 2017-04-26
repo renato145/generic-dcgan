@@ -4,22 +4,23 @@ import numpy as np
 from time import time
 from keras.models import Model, Sequential
 from keras.layers import Input, Dense, Reshape, Activation, BatchNormalization, Flatten
-from keras.layers import UpSampling2D, Conv2D, MaxPool2D
+from keras.layers import UpSampling2D, Conv2D, MaxPool2D, Dropout
 from keras.layers.advanced_activations import LeakyReLU
-from keras.optimizers import Adam
+from keras.optimizers import Adam, SGD
 from keras import backend as K
 
 LRELU = 0.2
 
-def custom_conv(x, filters, kernel=3, bn=True, activation='relu', ud_sample='None'):
+def custom_conv(x, filters, kernel=3, bn=True, activation='lrelu', ud_sample='None'):
     if ud_sample == 'up':
         x = UpSampling2D()(x)
     
-    initialization = 'he_uniform' if activation == 'relu' else 'glorot_uniform'
+    initialization = 'he_uniform' if activation.find('relu') == -1 else 'glorot_uniform'
+    activation_fn = LeakyReLU(LRELU) if activation == 'lrelu' else Activation(activation)
     out = Conv2D(filters, kernel, padding='same', kernel_initializer=initialization)(x)
     if bn:
         out = BatchNormalization()(out)
-    out = Activation(activation)(out)
+    out = activation_fn(out)
     
     if ud_sample == 'down':
         out = MaxPool2D()(out)
@@ -39,20 +40,26 @@ def custom_dense(x, units, bn=True, activation='lrelu'):
 def generator_model(latent_dims):
     x = Input((latent_dims,))
     y = custom_dense(x, 1024)
+    y = Dropout(0.5)(y)
     y = custom_dense(y, 128*7*7)
+    y = Dropout(0.5)(y)
     y = Reshape((7,7,128))(y)
-    y = custom_conv(y, 64, 5, ud_sample='up')
-    y = custom_conv(y, 1, 5, ud_sample='up', activation='tanh', bn=False)
+    y = custom_conv(y, 256, 5, ud_sample='up')
+    y = Dropout(0.2)(y)
+    y = custom_conv(y, 128, 5, ud_sample='up')
+    y = Dropout(0.2)(y)
+    y = custom_conv(y, 1, 3, activation='tanh', bn=False)
     model = Model(x, y)
     
     return model
 
 def discriminator_model(input_shape=(28,28,1)):
     x = Input(input_shape)
-    y = custom_conv(x, 64, 5, ud_sample='down')
-    y = custom_conv(y, 128, 5, ud_sample='down')
+    y = custom_conv(x, 32, 3, ud_sample='down')
+    y = custom_conv(x, 64, 3)
+    y = custom_conv(x, 128, 3, ud_sample='down')
+    y = custom_conv(x, 256, 3, ud_sample='down')
     y = Flatten()(y)
-    y = custom_dense(y, 1024)
     y = custom_dense(y, 1, bn=False, activation='sigmoid')
     model = Model(x, y)
     
@@ -68,7 +75,7 @@ def generator_containing_discriminator(generator, discriminator):
 
 class GanModel(object):
     def __init__(self, g_weights='generator.h5', d_weights='discriminator.h5', data='data.npy',
-                 lr=5e-4, latent_dims=100):
+                 lr=2e-4, latent_dims=100):
         self.lr = lr
         self.latent_dims = latent_dims
         self.d_loss = []
@@ -80,11 +87,18 @@ class GanModel(object):
         self.d = discriminator_model()
         self.g = generator_model(latent_dims)
         self.dg = generator_containing_discriminator(self.g, self.d)
-        self.g.compile(loss='binary_crossentropy', optimizer=Adam(self.lr))
-        self.dg.compile(loss='binary_crossentropy', optimizer=Adam(self.lr))
+        self.g.compile(loss='binary_crossentropy', optimizer='sgd')
+        self.dg.compile(loss='binary_crossentropy', optimizer=Adam(lr=self.lr, beta_1=0.5))
         self.d.trainable = True
-        self.d.compile(loss='binary_crossentropy', optimizer=Adam(self.lr))
+        self.d.compile(loss='binary_crossentropy', optimizer=SGD(self.lr))
         self.load_weights()
+        self.save_data()
+    
+    def update_lr(self, lr):
+        self.lr = lr
+        K.eval(self.d.optimizer.lr.assign(lr))
+        K.eval(self.g.optimizer.lr.assign(lr))
+        K.eval(self.dg.optimizer.lr.assign(lr))
         self.save_data()
     
     def load_data(self):
@@ -117,16 +131,17 @@ class GanModel(object):
             print(f'Epoch : {epoch + 1:04}/{epochs:04}')
             for index in range(n_batches):
                 for i in range(batch_size):
-                    noise[i, :] = np.random.uniform(-1, 1, self.latent_dims)
+                    noise[i, :] = np.random.normal(-1, 1, self.latent_dims)
                     
                 image_batch = X_train[index*batch_size:(index+1)*batch_size]
                 generated_images = self.g.predict(noise, verbose=0)
-                X = np.concatenate((image_batch, generated_images))
-                y = [0.9] * batch_size + [0.0] * batch_size
-                d_loss = self.d.train_on_batch(X, y)
+                d_loss1 = self.d.train_on_batch(image_batch, [0.9] * batch_size)
+                d_loss2 = self.d.train_on_batch(generated_images, [0.0] * batch_size)
+                d_loss = (d_loss1 + d_loss2) / 2
                 self.d_loss.append(d_loss)
+
                 for i in range(batch_size):
-                    noise[i, :] = np.random.uniform(-1, 1, self.latent_dims)
+                    noise[i, :] = np.random.normal(-1, 1, self.latent_dims)
                     
                 self.d.trainable = False
                 g_loss = self.dg.train_on_batch(noise, [1] * batch_size)
@@ -148,7 +163,7 @@ class GanModel(object):
     def generate(self, batch_size, verbose=1):
         noise = np.zeros((batch_size, self.latent_dims))
         for i in range(batch_size):
-            noise[i, :] = np.random.uniform(-1, 1, self.latent_dims)
+            noise[i, :] = np.random.normal(-1, 1, self.latent_dims)
             
         generated_images = self.g.predict(noise, verbose=verbose)
         
