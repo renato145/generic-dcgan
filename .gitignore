@@ -1,6 +1,8 @@
 *.h5
 *.pkl
+*.npy
 _cache_*
+pytorch_gan/faces/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
