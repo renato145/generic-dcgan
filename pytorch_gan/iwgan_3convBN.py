@@ -57,14 +57,14 @@ class ConvBlock(nn.Module):
         elif mode == 'down':
             self.conv2 = nn.Conv2d(in_f, out_f, 4, 2, 1, bias=False)
             
-        #self.bn2 = nn.BatchNorm2d(out_f)
+        self.bn2 = nn.BatchNorm2d(out_f)
     
     def forward(self, x):
         #out = self.conv1(x)
         #if self.bn: out = self.bn1(out)
         #out = self.act_f(out)
         out = self.conv2(x)
-        #if self.bn: out = self.bn2(out)
+        if self.bn: out = self.bn2(out)
         out = self.act_f(out)
             
         return out
@@ -79,7 +79,7 @@ class G(nn.Module):
         self.upconv2 = ConvBlock(features, features)
         self.upconv3 = ConvBlock(features, features)
         self.upconv4 = ConvBlock(features, features)
-        #self.upconv5 = ConvBlock(features, features)
+        self.upconv5 = ConvBlock(features, features)
         self.final = nn.Conv2d(features, 3, 3, 1, 1, bias=False)
 
     def forward(self, x):
@@ -89,7 +89,7 @@ class G(nn.Module):
         out = self.upconv2(out)
         out = self.upconv3(out)
         out = self.upconv4(out)
-        #out = self.upconv5(out)
+        out = self.upconv5(out)
         out = self.final(out)
         out = F.tanh(out)
         
@@ -104,7 +104,7 @@ class D(nn.Module):
         self.conv3 = ConvBlock(features, features, bn=False, act='lrelu', mode='down')
         self.conv4 = ConvBlock(features, features, bn=False, act='lrelu', mode='down')
         self.conv5 = ConvBlock(features, features, bn=False, act='lrelu', mode='down')
-        #self.conv6 = ConvBlock(features, features, bn=False, act='lrelu', mode='down')
+        self.conv6 = ConvBlock(features, features, bn=False, act='lrelu', mode='down')
         self.fc1 = LinearBlock(128*2*2, 512, bn=False, act='lrelu')
         self.fc2 = nn.Linear(512, 1, bias=False)
         
@@ -114,7 +114,7 @@ class D(nn.Module):
         out = self.conv3(out)
         out = self.conv4(out)
         out = self.conv5(out)
-        #out = self.conv6(out)
+        out = self.conv6(out)
         out = out.view([-1, 128*2*2])
         out = self.fc1(out)
         out = self.fc2(out)
