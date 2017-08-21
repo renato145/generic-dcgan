@@ -11,7 +11,7 @@ def dense_layer(inp, f, act='relu', bn=True):
     if bn: out = BatchNormalization()(out)
     
     if act == 'lrelu':
-        out = LeakyReLU()(out)
+        out = LeakyReLU(alpha=0.2)(out)
     elif act is not None:
         out = Activation(act)(out)
     
@@ -25,7 +25,7 @@ def conv_layer(inp, f, k=4, s=2, p='same', act='relu', bn=True, transpose=False)
     if bn: out = BatchNormalization()(out)
     
     if act == 'lrelu':
-        out = LeakyReLU()(out)
+        out = LeakyReLU(alpha=0.2)(out)
     elif act is not None:
         out = Activation(act)(out)
     
@@ -53,6 +53,7 @@ def make_generator():
     y = conv_layer(y, 128, transpose=True)
     y = conv_layer(y, 64, transpose=True)
     y = conv_layer(y, 32, transpose=True)
-    y = conv_layer(y, 3, 3, 1, act='tanh', bn=False, transpose=True)
+    y = conv_layer(y, 32, 3, 1)
+    y = conv_layer(y, 3, 3, 1, act='tanh', bn=False)
     
     return Model(x, y)

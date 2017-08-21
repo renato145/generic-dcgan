@@ -26,13 +26,15 @@ def show(data, fs=(16,16)):
     plt.imshow(grid, interpolation='nearest')
     plt.show()
     
-def generate_images(generator_model, output_dir=None, epoch=None, n=64, mode='save'):
+def generate_images(generator_model, noise, output_dir=None, epoch=None, mode='save'):
     """Feeds random seeds into the generator and tiles and saves the output to a PNG file."""
-    test_image_stack = generator_model.predict(np.random.rand(n, 128))
+    test_image_stack = generator_model.predict(noise)
     if mode == 'save':
         save_img(test_image_stack, output_dir, epoch)
     elif mode == 'show':
         show(test_image_stack)
+        
+    return test_image_stack
 
 def save_weights(d_model, g_model, path='data', file_prefix='lsun'):
     d_file = os.path.join(path, file_prefix+'_discriminator.h5')
