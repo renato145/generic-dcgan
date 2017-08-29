@@ -9,30 +9,30 @@ from keras.layers.merge import _Merge
 from keras.optimizers import Adam
 from functools import partial
 
-def save_img(data, output_dir, epoch):
+def save_img(data, output_dir, epoch, **kwargs):
     imgs = torch.from_numpy(data).transpose(1, 2).transpose(1,3)
-    grid = utils.make_grid(imgs)
+    grid = utils.make_grid(imgs, **kwargs)
     grid = (grid/2+0.5).clamp(0,1).numpy()
     grid = np.transpose(grid, (1,2,0))
     outfile = os.path.join(output_dir, f'epoch_{epoch}.png')
     plt.imsave(outfile, grid)
 
-def show(data, fs=(16,16)):
+def show(data, fs=(16,16), **kwargs):
     imgs = torch.from_numpy(data).transpose(1, 2).transpose(1,3)
-    grid = utils.make_grid(imgs)
+    grid = utils.make_grid(imgs, **kwargs)
     grid = (grid/2+0.5).clamp(0,1).numpy()
     grid = np.transpose(grid, (1,2,0))
     plt.figure(figsize = fs)
     plt.imshow(grid, interpolation='nearest')
     plt.show()
     
-def generate_images(generator_model, noise, output_dir=None, epoch=None, mode='save'):
+def generate_images(generator_model, noise, output_dir=None, epoch=None, mode='save', **kwargs):
     """Feeds random seeds into the generator and tiles and saves the output to a PNG file."""
     test_image_stack = generator_model.predict(noise)
     if mode == 'save':
-        save_img(test_image_stack, output_dir, epoch)
+        save_img(test_image_stack, output_dir, epoch, **kwargs)
     elif mode == 'show':
-        show(test_image_stack)
+        show(test_image_stack, **kwargs)
         
     return test_image_stack
 
@@ -111,7 +111,7 @@ def build_gan_arch(discriminator, generator, batch_size, gradient_penalty):
     # The noise seed is run through the generator model to get generated images. Both real and generated images
     # are then run through the discriminator. Although we could concatenate the real and generated images into a
     # single tensor, we don't (see model compilation for why).
-    real_samples = Input(shape=(64,64,3))
+    real_samples = Input(shape=(128,128,3))
     generator_input_for_discriminator = Input(shape=(128,))
     generated_samples_for_discriminator = generator(generator_input_for_discriminator)
     discriminator_output_from_generator = discriminator(generated_samples_for_discriminator)
