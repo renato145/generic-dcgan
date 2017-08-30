@@ -1,6 +1,8 @@
 *.h5
 *.pkl
 *.npy
+keras_wgan_gp/imgs_128/
+keras_wgan_gp/imgs/
 _cache_*
 pytorch_gan/faces/
 
